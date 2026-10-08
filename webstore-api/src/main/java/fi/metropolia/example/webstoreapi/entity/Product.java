@@ -1,33 +1,46 @@
 package fi.metropolia.example.webstoreapi.entity;
 
 import java.math.BigDecimal;
-import java.util.Set;
 
-import org.springframework.data.util.ProxyUtils;
+import org.springframework.lang.Nullable;
 
+import fi.metropolia.example.webstoreapi.entitylistener.ProductListener;
 import jakarta.persistence.Column;
+import jakarta.persistence.DiscriminatorColumn;
+import jakarta.persistence.DiscriminatorType;
+import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EntityGraph;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
+import jakarta.persistence.Inheritance;
+import jakarta.persistence.InheritanceType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
 
 /**
- * Product entity, mapped to the webstore "products" table.
+ * Product, mapped to the webstore {@code products} table.
  *
- * <p>One entity suffices for the scaffold endpoint (GET /products/{id});
- * the relations to {@code productcategories} and {@code suppliers} are added in
- * work-order step 2 (domain layer).</p>
+ * <p><b>Inheritance:</b> root of a {@link InheritanceType#JOINED} hierarchy with
+ * the subclasses {@link PhysicalProduct} and {@link DigitalProduct} (see
+ * {@code db/product_subtypes.sql}; the schema change is documented in the
+ * README). Base-class products use discriminator value {@code P}.</p>
+ *
+ * <p><b>Loading:</b> {@code @ManyToOne} relations to category/supplier are
+ * EAGER — a product without its category/supplier context is not a sensible
+ * response for the webshop view, and both are small lookups. Lists solve the
+ * N+1 issue with JOIN FETCH queries in repository methods (documented).</p>
  */
 @Entity
-@Table(name = "products", indexes = {
-		@Index(name = "ix_products_category", columnList = "category_id"),
-		@Index(name = "ix_products_supplier", columnList = "supplier_id") })
+@Table(name = "products")
+@Inheritance(strategy = InheritanceType.JOINED)
+@DiscriminatorColumn(name = "dtype", discriminatorType = DiscriminatorType.STRING, length = 31)
+@DiscriminatorValue("P")
+@EntityListeners(ProductListener.class)
 public class Product {
 
 	@Id
@@ -35,55 +48,78 @@ public class Product {
 	@Column(name = "id", nullable = false, updatable = false)
 	private Integer id;
 
-	@NotBlank
 	@Column(name = "name", nullable = false, length = 255)
 	private String name;
 
 	@Column(name = "description", length = 65535)
 	private String description;
 
-	@NotNull
-	@DecimalMin("0.00")
 	@Column(name = "price", nullable = false, precision = 10, scale = 2)
 	private BigDecimal price;
 
-	@NotNull
-	@PositiveOrZero
 	@Column(name = "stock_quantity", nullable = false)
 	private Integer stockQuantity;
 
-	@Column(name = "category_id", updatable = false, insertable = false)
-	private Integer categoryId;
+	@ManyToOne(fetch = FetchType.EAGER, optional = true)
+	@JoinColumn(name = "category_id")
+	@Nullable
+	private ProductCategory category;
 
-	@Column(name = "supplier_id", updatable = false, insertable = false)
-	private Integer supplierId;
+	@ManyToOne(fetch = FetchType.EAGER, optional = true)
+	@JoinColumn(name = "supplier_id")
+	@Nullable
+	private Supplier supplier;
 
 	public Integer getId() {
-		return this.id;
+		return id;
 	}
 
 	public String getName() {
-		return this.name;
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
 	}
 
 	public String getDescription() {
-		return this.description;
+		return description;
+	}
+
+	public void setDescription(String description) {
+		this.description = description;
 	}
 
 	public BigDecimal getPrice() {
-		return this.price;
+		return price;
+	}
+
+	public void setPrice(BigDecimal price) {
+		this.price = price;
 	}
 
 	public Integer getStockQuantity() {
-		return this.stockQuantity;
+		return stockQuantity;
 	}
 
-	public Integer getCategoryId() {
-		return this.categoryId;
+	public void setStockQuantity(Integer stockQuantity) {
+		this.stockQuantity = stockQuantity;
 	}
 
-	public Integer getSupplierId() {
-		return this.supplierId;
+	public ProductCategory getCategory() {
+		return category;
+	}
+
+	public void setCategory(ProductCategory category) {
+		this.category = category;
+	}
+
+	public Supplier getSupplier() {
+		return supplier;
+	}
+
+	public void setSupplier(Supplier supplier) {
+		this.supplier = supplier;
 	}
 
 	@Override

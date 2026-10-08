@@ -76,7 +76,7 @@ to all planned JPA concepts:
 | **1:M** | `Customer→CustomerAddresses`, `Supplier→SupplierAddresses`, `ProductCategory→Products`, `Supplier→Products`, `Order→OrderItems`, `Customer→Contacts` |
 | **N:M** | `Orders ↔ Products` (through the `orderitems` link table; `orderitems` uses a composite PK `(order_id, product_id)`) |
 | **1:1** | `Order ↔ CustomerAddress` (via `orders.shipping_address_id` FK) |
-| **Inheritance** | `Contact` extended by a customer-contact subtype, **or** `Product` → `PhysicalProduct` / `DigitalProduct` (e.g. `JOINED` strategy) — final choice is justified in the README |
+| **Inheritance** | **Final: `Product` → `PhysicalProduct` / `DigitalProduct`, `JOINED` strategy.** The provided schema has no discriminator or subclass tables, so a small, documented schema change (`db/product_subtypes.sql`, run by DBA) adds `products.dtype` + two subclass tables joined on the products PK. Base products = discriminator `P`; rationale in README |
 | **Eager vs Lazy** | `@ManyToOne` (product → category/supplier) = **eager**; `@OneToMany` (order → items, customer → addresses/orders) = **lazy**; justification in README |
 | **Converter** | `OrderStatus` (`NEW`, `SHIPPED`, `DELIVERED`, `CANCELLED`) as enum ↔ `VARCHAR` via `AttributeConverter`, **or** a boolean ↔ `Y/N` converter (mirroring the sample repo's `KyllaEiBooleanConverter`); choice justified in README |
 | **Entity listener** | `@PreUpdate` / `@PostPersist` on `Product` (log price/stock changes, mirroring `HaltijaListener`) and/or on `Order` |
@@ -252,8 +252,18 @@ webstore-api/
    `WEBSTORE_DB_PASSWORD` env var, never committed), `db/grants.sql` created, dump
    loaded locally; entity `Product` + endpoint `GET /products/{id}` verified
    end-to-end (200 / 404) with Swagger UI up.*
-2. **Domain layer** — all 9 entities, repositories, DTOs; verify associations
-   (1:M, N:M via `orderitems`, 1:1 shipping address, one inheritance case).
+2. **Domain layer** — ✅ *done: all 9 entities + the 2 product subclasses
+   (`PhysicalProduct`, `DigitalProduct`, `JOINED` inheritance + `products.dtype`
+   discriminator via `db/product_subtypes.sql`), repositories, DTOs, the
+   `OrderStatusConverter` and `ProductListener`. All associations verified
+   (1:M `Customer→addresses`, `Supplier→addresses/products`,
+   `ProductCategory→products`, `Order→items`; N:M `Orders↔Products` through
+   `orderitems` as explicit entity with `IdClass` composite PK, carrying
+   quantity/unit_price; 1:1 `Order↔shipping address` FK). Load-mode decisions
+   per §3 (Many-to-one category/supplier EAGER; customer + order collections
+   LAZY + JOIN FETCH for order detail); `OrderStatus` enum ↔ varchar via
+   autoApply `AttributeConverter`; boot-validated with `ddl-auto: validate`
+   against the populated DB.*
 3. **CRUD + query endpoints** — implement the §2 CRUD coverage and §4 endpoint
    tables, starting with the order aggregate (checkout, cart editing, status
    changes).

@@ -18,9 +18,18 @@ transactions, temporal features, security) will be documented here.
 
 ### Implemented so far
 
+- **Scaffold**: Spring Boot 3.5 + JPA + MariaDB + springdoc; least-privilege DB
+  user (`webstore_app`) via `db/grants.sql`; `GET /products/{id}` (200/404)
+- **Domain layer (step 2)**: all 9 webstore tables mapped to entities; N:M
+  `Orders ↔ Products` through `orderitems` (explicit entity, composite PK,
+  carries quantity/unit-price); 1:1 `Order ↔ shipping address`; 1:M sets;
+  **JOINED inheritance** `Product → PhysicalProduct / DigitalProduct` via a
+  documented schema change (`db/product_subtypes.sql`); `OrderStatus` enum ↔
+  varchar `AttributeConverter`; JPA entity listener on `Product`
+
 | Endpoint | Method | Description |
 |---|---|---|
-| `/products/{id}` | GET | Read one product by id, 404 if missing |
+| `/products/{id}` | GET | Read one product by id (with category + supplier names), 404 if missing |
 
 ## Requirements
 
@@ -49,11 +58,18 @@ Then:
 
 ## Database setup (DBA, once)
 
-Run as an admin account, not as the application user:
+Run the schema changes/scripts as an admin account, never as the application
+user, **before** starting the app ( Hibernate runs `ddl-auto: validate` and
+will fail on a mismatched schema):
 
 ```bash
 mariadb -h 127.0.0.1 -u root -p < webstore-api/src/main/resources/db/grants.sql
+mariadb -h 127.0.0.1 -u root -p < webstore-api/src/main/resources/db/product_subtypes.sql
 ```
+
+The schema change adds the `products.dtype` discriminator column and the two
+subclass tables for the `JOINED` inheritance case
+(see [PROJECT_PLAN.md §3](PROJECT_PLAN.md#3-domain-model--entity-mappings)).
 
 Passwords are never committed to this repository; the application reads
 `WEBSTORE_DB_PASSWORD` / `WEBSTORE_DB_USER` (default: `webstore_app`) from

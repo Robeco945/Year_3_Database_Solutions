@@ -41,6 +41,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.customeraddresses TO 'webstore_
 GRANT SELECT, INSERT, UPDATE ON webstore.customers            TO 'webstore_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE ON webstore.contacts             TO 'webstore_app'@'localhost';
 
+-- product subtype tables (JOINED inheritance; db/product_subtypes.sql):
+-- product "remove-from-sale"/admin updates may touch subclass attributes
+GRANT SELECT, INSERT, UPDATE ON webstore.physicalproducts TO 'webstore_app'@'localhost';
+GRANT SELECT, INSERT, UPDATE ON webstore.digitalproducts  TO 'webstore_app'@'localhost';
+
 -- NOTE: the price/status-log tables and views created later (plan §6) must have
 -- matching grants added here:
 --   GRANT SELECT ON webstore.order_totals TO ...;
