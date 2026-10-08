@@ -246,10 +246,12 @@ webstore-api/
 
 ## 8. Work order
 
-1. **Scaffold** — create project at start.spring.io (same stack as sample repo),
-   configure `application.yml` for the webstore DB with the least-privilege DB user,
-   get one entity + one endpoint working end-to-end. Create DB scripts (grants,
-   indexes) early.
+1. **Scaffold** — ✅ *done: `webstore-api/` creates at the same stack as sample repo
+   (Spring Boot 3.5.11, Java 21 + springdoc), `application.yml` configured for the
+   webstore DB with the least-privilege `webstore_app` user (pw via
+   `WEBSTORE_DB_PASSWORD` env var, never committed), `db/grants.sql` created, dump
+   loaded locally; entity `Product` + endpoint `GET /products/{id}` verified
+   end-to-end (200 / 404) with Swagger UI up.*
 2. **Domain layer** — all 9 entities, repositories, DTOs; verify associations
    (1:M, N:M via `orderitems`, 1:1 shipping address, one inheritance case).
 3. **CRUD + query endpoints** — implement the §2 CRUD coverage and §4 endpoint

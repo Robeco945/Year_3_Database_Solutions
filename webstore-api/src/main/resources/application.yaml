@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: webstore-api
+  datasource:
+    url: jdbc:mariadb://localhost:3306/webstore
+    # Least-privilege app user created by db/grants.sql (see PROJECT_PLAN.md §6)
+    username: ${WEBSTORE_DB_USER:webstore_app}
+    password: ${WEBSTORE_DB_PASSWORD}
+  jpa:
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+        # Schema is managed by the provided SQL dumps, never by Hibernate
+        ddl-auto: validate
