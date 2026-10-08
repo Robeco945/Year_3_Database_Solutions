@@ -80,13 +80,16 @@ public class CustomerService {
 		return PageResponseDto.of(customerRepository.findCustomersWithoutOrders(pageable).map(this::toDto));
 	}
 
-	/** JOIN + GROUP BY + ORDER BY SUM (plan §4 #8). */
+	/** Ranked from the {@code customer_summary} view (ORDER BY total_spent, plan §4 #8). */
 	@Transactional(readOnly = true)
 	public List<TopSpenderDto> topSpenders(int limit) {
 		if (limit <= 0) {
 			throw new IllegalArgumentException("limit must be > 0");
 		}
-		return orderRepository.findTopSpenders(PageRequest.of(0, limit));
+		return orderRepository.findTopSpenders(limit).stream()
+				.map(row -> new TopSpenderDto(row.getCustomerId(), row.getCustomerName(), row.getEmail(),
+						row.getOrderCount(), row.getTotalSpent()))
+				.toList();
 	}
 
 	public Customer findCustomer(Integer id) {

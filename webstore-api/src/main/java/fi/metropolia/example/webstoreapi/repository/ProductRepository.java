@@ -1,6 +1,7 @@
 package fi.metropolia.example.webstoreapi.repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +16,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import fi.metropolia.example.webstoreapi.dto.CategoryStatsDto;
+import fi.metropolia.example.webstoreapi.dto.PriceHistoryRow;
 import fi.metropolia.example.webstoreapi.dto.ProductDto;
 import fi.metropolia.example.webstoreapi.entity.Product;
 import jakarta.persistence.LockModeType;
@@ -96,5 +98,33 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
 	long countByCategoryId(Integer categoryId);
 
 	long countBySupplierId(Integer supplierId);
+
+	/**
+	 * Temporal feature (plan §6): full version history of a product's price
+	 * from the system-versioned {@code productpricehistory} table
+	 * ({@code FOR SYSTEM_TIME ALL}). Ordered oldest first.
+	 */
+	@Query(nativeQuery = true, value = """
+			SELECT price      AS price,
+			       ROW_START  AS rowStart,
+			       ROW_END    AS rowEnd
+			FROM productpricehistory FOR SYSTEM_TIME ALL
+			WHERE product_id = :productId
+			ORDER BY ROW_START
+			""")
+	List<PriceHistoryRow> findPriceHistory(@Param("productId") Integer productId);
+
+	/**
+	 * Temporal feature (plan §6): price of a product at time T
+	 * ({@code FOR SYSTEM_TIME AS OF T}). Empty if no version existed at T
+	 * (typically: T before this feature was deployed) — the service applies
+	 * the documented fallback (current {@code products.price}).
+	 */
+	@Query(nativeQuery = true, value = """
+			SELECT price
+			FROM productpricehistory FOR SYSTEM_TIME AS OF :at
+			WHERE product_id = :productId
+			""")
+	Optional<BigDecimal> findPriceAtTime(@Param("productId") Integer productId, @Param("at") LocalDateTime at);
 
 }

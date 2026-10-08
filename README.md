@@ -11,10 +11,10 @@ catalogue resources. The work plan is in [PROJECT_PLAN.md](PROJECT_PLAN.md).
 
 ## Status
 
-Work in progress. Work-order steps 1–3 are done (scaffold, domain layer,
-CRUD + query endpoints). Step 4 adds the database features (views, triggers,
-scheduled event, temporal price history, indexes with `EXPLAIN`, DBA scripts)
-and step 5 completes the documentation.
+Work-order steps 1–4 are done (scaffold, domain layer, CRUD + query
+endpoints, database features incl. views, triggers, system-versioned temporal
+price history, scheduled event, measured indexes). Step 5 completes the
+documentation; this README is kept current as remaining work lands.
 
 ### Implemented (step 3)
 
@@ -39,6 +39,56 @@ and step 5 completes the documentation.
   a stale `version` on the price update returns 409.
 - Central error handling: RFC 7807 ProblemDetail responses for 404 / 400 / 409.
 
+### Implemented (step 4) — database features
+
+Not all of these are visible through the API; they are documented here in
+full. Verification evidence per feature is noted; scripts live in
+[db/](webstore-api/src/main/resources/db/).
+
+- **Views** (SELECT-granted read-only views, `db/views.sql`), **serving API
+  responses** (verified live):
+  - `order_totals` — one row per order: customer name, item count, total
+    amount (aggregates `orders`+`orderitems`); serves `GET /orders`,
+    `GET /orders/search` and `GET /orders/customer/{id}` (one page query +
+    one count query against the view, newest first)
+  - `customer_summary` — per-customer order count, non-cancelled total spent,
+    latest order date; serves the customer detail aggregate fields
+    (`GET /customers/{id}`) and `GET /customers/top-spenders` (ranked by
+    total spent; email joined back from `customers`)
+  - *Semantic note:* the view's `total_spent` excludes CANCELLED orders —
+    customer detail and top-spenders therefore report spend from live orders
+- **Triggers** (`db/triggers.sql`), write with DEFINER rights so the API user
+  needs **no** write grants on the tables (least privilege preserved, verified
+  live):
+  - `products` price change → `productpricehistory` (only on real change;
+    also on insert, incl. the seed of the 1 000 existing products)
+  - `orders` status change → `orderstatuslog` (old→new status + ms timestamp)
+- **Temporal feature** (MariaDB system versioning, ≥ 10.3), **exposed and
+  verified live through the API**:
+  - `GET /products/{id}/price-history` — full change log, oldest first
+    (price, `changedAt`, `validUntil`; `validUntil` far-future for the
+    current version)
+  - `GET /products/{id}/price?at=` — price at time T via
+    `FOR SYSTEM_TIME AS OF T`; without `at` → current price. If no version
+    existed at T (typically T before this feature was deployed), the
+    documented fallback returns the current `products.price` and the response
+    carries it with `source=CURRENT_FALLBACK` (vs `HISTORICAL` / `CURRENT`)
+  - verified live: changing product 1's price via
+    `PUT /products/{id}/price` appended the old version to the history and
+    the "price as of the previous minute" query returned the pre-change price
+- **Scheduled event** (`db/events.sql`,
+  `ev_daily_sales_yesterday`, runs nightly at 03:00, scheduler enabled):
+  refreshes `dailysales` (per sale date: order count, non-cancelled total).
+  Logic verified by manual run for 2024-04-03 → 205 orders, €1 584 385.70
+  (matches the 290 orders that day minus 85 CANCELLED).
+- **Indexing** (`db/indexes.sql`, measurements in
+  [docs/index_plan.md](webstore-api/docs/index_plan.md)): 4 new indexes +
+  1 log-table index; `EXPLAIN` before/after (e.g. customer email lookup
+  99 688 rows examined → 1; status+date COUNT 199 806 → 6 010 with a covering
+  index; FK-join control query unchanged). Indexes exist only where a measured
+  access pattern justifies the write cost, reasoned in docs (relevant for the
+  §5 transactional checkout).
+
 ## Endpoints
 
 All list endpoints accept `page` and `size` (default 20, max 100) plus
@@ -51,6 +101,8 @@ All list endpoints accept `page` and `size` (default 20, max 100) plus
 |---|---|---|---|---|
 | GET | `/products` | Catalogue listing; filters `category`, `supplier`, `minPrice`, `maxPrice`, `search` (name contains), paginated + sorted | query params | page of ProductDto |
 | GET | `/products/{id}` | Product detail incl. subclass attributes (`type`, `weightGrams`/`downloadUrl`) and current `version` | – | ProductDetailDto |
+| GET | `/products/{id}/price-history` | Price change log, oldest first — temporal feature, system-versioned history | – | list of PriceHistoryEntryDto |
+| GET | `/products/{id}/price` | Price at time T (`?at=` ISO date-time); without `at` → current price; pre-deployment times fall back to the current price with `source=CURRENT_FALLBACK` — temporal feature | `?at=` | ProductPriceAtDto |
 | GET | `/products/price/{min}` | Products with price ≥ min (derived query) | – | list of ProductDto |
 | GET | `/products/category/{id}` | Products of one category together with the category's own data | – | CategoryProductsDto |
 | GET | `/products/stats/by-category` | Per-category count / avg / min / max price; `minProducts` restricts via HAVING | `?minProducts=` | list of CategoryStatsDto |
@@ -90,9 +142,9 @@ All list endpoints accept `page` and `size` (default 20, max 100) plus
 
 | Method | Endpoint | Purpose | Request | Response |
 |---|---|---|---|---|
-| GET | `/orders` | Order list; filters `status`, `customerId`; newest first by default | query params | page of OrderSummaryDto |
-| GET | `/orders/search` | Dynamic multi-criteria search: `status`, `customerId`, `dateFrom`, `dateTo` (ISO date-time, Specification/Criteria API) | query params | page of OrderSummaryDto |
-| GET | `/orders/customer/{customerId}` | A customer's order history, optional `status` | query params | page of OrderSummaryDto |
+| GET | `/orders` | Order list; filters `status`, `customerId`; `page`/`size` honored, newest first (fixed order). Served by the `order_totals` view: customer name + item count + total amount come from the view | query params | page of OrderSummaryDto |
+| GET | `/orders/search` | Dynamic multi-criteria search over the `order_totals` view: `status`, `customerId`, `dateFrom`, `dateTo` (ISO date-time) | query params | page of OrderSummaryDto |
+| GET | `/orders/customer/{customerId}` | A customer's order history (view-backed), optional `status` | query params | page of OrderSummaryDto |
 | GET | `/orders/{id}` | Order detail: items with product names + subtotals, order total, shipping address | – | OrderDetailDto |
 | POST | `/orders` | Checkout: transactional, pessimistic stock locking; 409 on insufficient stock, unknown product/address | OrderCreateRequest | 201 OrderDetailDto |
 | PUT | `/orders/{id}/status` | Status transition (rules below) | `{status}` | OrderDetailDto |
@@ -131,6 +183,10 @@ All list endpoints accept `page` and `size` (default 20, max 100) plus
   `contacts`; a customer's contact record is the contact with the same email
   (generated data may contain duplicates, the lowest id is used
   deterministically).
+- **Aggregation semantics**: `total_spent` in the customer detail and
+  top-spenders responses (from the `customer_summary` view) excludes
+  CANCELLED orders; `order_count` counts every order record. Order totals per
+  order (`order_totals` view) sum all lines of that order regardless of status.
 - **Product delete**: intentionally not exposed (plan §2); admin
   "remove from sale" is a stock/price update.
 - **Customer delete/update**: intentionally not exposed (plan §2) — customers
@@ -170,7 +226,12 @@ will fail on a mismatched schema):
 ```bash
 mariadb -h 127.0.0.1 -u root -p < webstore-api/src/main/resources/db/grants.sql
 mariadb -h 127.0.0.1 -u root -p < webstore-api/src/main/resources/db/product_subtypes.sql
-mariadb -h 127.0.0.1 -u root -p < webstore-api/src/main/resources/db/optimistic_locking.sql
+mariadb -h 127.0.0.1 -u root -p webstore < webstore-api/src/main/resources/db/optimistic_locking.sql
+mariadb -h 127.0.0.1 -u root -p webstore < webstore-api/src/main/resources/db/indexes.sql
+mariadb -h 127.0.0.1 -u root -p webstore < webstore-api/src/main/resources/db/views.sql
+mariadb -h 127.0.0.1 -u root -p webstore < webstore-api/src/main/resources/db/triggers.sql
+mariadb -h 127.0.0.1 -u root -p webstore < webstore-api/src/main/resources/db/events.sql
+mariadb -h 127.0.0.1 -u root -p -e "SET GLOBAL event_scheduler = ON"
 ```
 
 - `product_subtypes.sql` adds the `products.dtype` discriminator and the two
@@ -178,6 +239,12 @@ mariadb -h 127.0.0.1 -u root -p < webstore-api/src/main/resources/db/optimistic_
   (see [PROJECT_PLAN.md §3](PROJECT_PLAN.md#3-domain-model--entity-mappings)).
 - `optimistic_locking.sql` adds the `products.version` column used by the
   `@Version` optimistic locking (plan §5).
+- `triggers.sql` seeds `productpricehistory` with the existing products'
+  current prices (the temporal feature's first version).
+- **Event scheduler**: `SET GLOBAL event_scheduler = ON` is not durable across
+  server restarts — for a persistent setup set `event_scheduler=ON` in the
+  MariaDB server configuration (e.g. `/etc/my.cnf.d/server.cnf`, `[mysqld]`)
+  and restart. Without it the nightly `dailysales` event stays idle.
 
 Passwords are never committed to this repository; the application reads
 `WEBSTORE_DB_PASSWORD` / `WEBSTORE_DB_USER` (default: `webstore_app`) from

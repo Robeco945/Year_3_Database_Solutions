@@ -1,6 +1,7 @@
 package fi.metropolia.example.webstoreapi.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 
@@ -13,10 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 import fi.metropolia.example.webstoreapi.dto.CategoryProductsDto;
 import fi.metropolia.example.webstoreapi.dto.CategoryStatsDto;
 import fi.metropolia.example.webstoreapi.dto.PageResponseDto;
+import fi.metropolia.example.webstoreapi.dto.PriceHistoryEntryDto;
 import fi.metropolia.example.webstoreapi.dto.PriceUpdateRequest;
 import fi.metropolia.example.webstoreapi.dto.ProductCategoryDto;
 import fi.metropolia.example.webstoreapi.dto.ProductDetailDto;
 import fi.metropolia.example.webstoreapi.dto.ProductDto;
+import fi.metropolia.example.webstoreapi.dto.ProductPriceAtDto;
 import fi.metropolia.example.webstoreapi.dto.ProductWriteDto;
 import fi.metropolia.example.webstoreapi.entity.DigitalProduct;
 import fi.metropolia.example.webstoreapi.entity.PhysicalProduct;
@@ -80,6 +83,41 @@ public class ProductService {
 			throw new IllegalArgumentException("minProducts must be >= 0");
 		}
 		return productRepository.findCategoryStats(minProducts);
+	}
+
+	/**
+	 * Temporal feature (plan §6): the price change log of one product, oldest
+	 * first, from the system-versioned {@code productpricehistory} table. The
+	 * first entry is the seeded/created price; {@code validUntil} is null for
+	 * the current version.
+	 */
+	@Transactional(readOnly = true)
+	public List<PriceHistoryEntryDto> priceHistory(Integer productId) {
+		findProduct(productId);
+		return productRepository.findPriceHistory(productId).stream()
+				.map(row -> new PriceHistoryEntryDto(row.getPrice(), row.getRowStart(), row.getRowEnd()))
+				.toList();
+	}
+
+	/**
+	 * Temporal feature (plan §6): price of a product at time T.
+	 *
+	 * <p>{@code at == null} → the current price ({@code CURRENT}).
+	 * Otherwise the versioned table is queried with
+	 * {@code FOR SYSTEM_TIME AS OF}; if no version existed at T (typically:
+	 * T before this feature was deployed), the documented fallback returns the
+	 * current {@code products.price} ({@code CURRENT_FALLBACK}).</p>
+	 */
+	@Transactional(readOnly = true)
+	public ProductPriceAtDto priceAtTime(Integer productId, LocalDateTime at) {
+		Product product = findProduct(productId);
+		if (at == null) {
+			return new ProductPriceAtDto(productId, null, product.getPrice(), ProductPriceAtDto.SOURCE_CURRENT);
+		}
+		return productRepository.findPriceAtTime(productId, at)
+				.map(price -> new ProductPriceAtDto(productId, at, price, ProductPriceAtDto.SOURCE_HISTORICAL))
+				.orElse(new ProductPriceAtDto(productId, at, product.getPrice(),
+						ProductPriceAtDto.SOURCE_CURRENT_FALLBACK));
 	}
 
 	/** Admin create (plan §4 #16); {@code type} picks the subclass on create. */

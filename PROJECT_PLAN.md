@@ -283,9 +283,24 @@ webstore-api/
    write grants; README endpoint documentation and DBA setup updated; booted
    against the populated DB and verified end-to-end
    (checkout/cart/cancel/delete stock assertions, CRUD + 404/409 cases).*
-4. **Database features** — views, triggers (price + status log), scheduled event,
-   temporal price history, app user & grants; SQL scripts under
-   `src/main/resources/db/`; `EXPLAIN` before/after measurements for the index plan.
+4. **Database features** — ✅ *done: `db/indexes.sql` (4 measured indexes),
+   `db/views.sql` (`order_totals`, `customer_summary` — SELECT-only grants),
+   `db/triggers.sql` (price history capture + status transition log; **temporal
+   feature** via MariaDB **system versioning**: `FOR SYSTEM_TIME AS OF` /
+   `FOR SYSTEM_TIME ALL` verified live, incl. DEFINER-preserved least
+   privilege — app user updates price without write grants on the history
+   table) and `db/events.sql` (nightly `dailysales` event, scheduler enabled,
+   logic verified with a manual run for 2024-04-03: 205 orders, €1 584 385.70).
+   Indexes measured with `EXPLAIN` before/after in `docs/index_plan.md`
+   (email lookup 99 688 → 1 rows; status+date COUNT 199 806 → 6 010 covered
+   rows; control query unchanged → FK indexes already serve joins). Grants
+   extended (read-only on views/logs/summary). **API wiring completed:**
+   order list/search/history are served by `order_totals`, customer detail
+   aggregates + top-spenders by `customer_summary` (both view semantics
+   documented), and the temporal feature is exposed via
+   `GET /products/{id}/price-history` and `GET /products/{id}/price?at=`
+   (`FOR SYSTEM_TIME AS OF`, fallback for pre-deployment times). All verified
+   end-to-end against the populated DB. All script-reproducible.*
 5. **Documentation** — OpenAPI spec (springdoc), README (all endpoints: purpose,
    request, response; all DB features; limitations), `docs/` notes. Keep it current
    as features land.
@@ -302,13 +317,16 @@ webstore-api/
       left join/subquery, GROUP BY/HAVING, dynamic multi-criteria) — and endpoints
       **combine data from different tables**
 - [ ] **Broad API**: comprehensive endpoints incl. pagination + multi-criteria search
-- [ ] Identified hot queries backed by an indexing plan + before/after `EXPLAIN` measurements
+- [x] Identified hot queries backed by an indexing plan + before/after `EXPLAIN` measurements *(step 4, `webstore-api/docs/index_plan.md`)*
 - [ ] `POST /orders` demonstrates transactional stock handling with row locking;
       cart editing (`PATCH /orders/{id}/items`) also transactional
 - [ ] Optimistic locking (`@Version`) implemented and evaluated
-- [ ] ≥1 view (serving API responses), ≥1 trigger (price + status logs),
-      ≥1 scheduled event (+ optional stored procedure)
-- [ ] Temporal solution: price history queryable, "price at time T" endpoint
+- [x] ≥1 view (**serving API responses**), ≥1 trigger (price + status logs),
+      ≥1 scheduled event *(step 4; optional stored procedure not implemented)*
+- [x] Temporal solution: price history queryable, "price at time T" endpoint
+      *(system-versioned `productpricehistory`; `FOR SYSTEM_TIME AS OF` +
+      documented fallback; endpoints `GET /products/{id}/price-history`,
+      `GET /products/{id}/price?at=`)*
 - [ ] App-level DB user with least-privilege grants; backup plan and schema-change
       plan documented
 - [ ] ≥1 `AttributeConverter`, ≥1 entity listener, ≥1 bulk `@Modifying` JPQL query,

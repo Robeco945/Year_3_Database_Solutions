@@ -13,20 +13,18 @@ import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fi.metropolia.example.webstoreapi.dto.CustomerAddressDto;
-import fi.metropolia.example.webstoreapi.dto.OrderAggregate;
 import fi.metropolia.example.webstoreapi.dto.OrderCreateRequest;
 import fi.metropolia.example.webstoreapi.dto.OrderDetailDto;
 import fi.metropolia.example.webstoreapi.dto.OrderItemRequest;
 import fi.metropolia.example.webstoreapi.dto.OrderItemViewDto;
 import fi.metropolia.example.webstoreapi.dto.OrderStatusUpdateRequest;
 import fi.metropolia.example.webstoreapi.dto.OrderSummaryDto;
+import fi.metropolia.example.webstoreapi.dto.OrderTotalsRow;
 import fi.metropolia.example.webstoreapi.dto.CartEditRequest;
 import fi.metropolia.example.webstoreapi.dto.PageResponseDto;
 import fi.metropolia.example.webstoreapi.entity.Customer;
@@ -45,7 +43,6 @@ import fi.metropolia.example.webstoreapi.repository.OrderItemRepository;
 import fi.metropolia.example.webstoreapi.repository.OrderRepository;
 import fi.metropolia.example.webstoreapi.repository.ProductRepository;
 import jakarta.persistence.criteria.JoinType;
-import jakarta.persistence.criteria.Predicate;
 
 /**
  * Order aggregate business logic (plan §2–§5): listing/searching orders,
@@ -80,9 +77,12 @@ public class OrderService {
 	}
 
 	/**
-	 * Order list / history / dynamic search (plan §4 #9, #11, #12). All filter
-	 * parameters are optional; the customer is JOIN FETCHed for the name and
-	 * the per-order aggregates are fetched in one query for the whole page.
+	 * Order list / history / dynamic search (plan §4 #9, #11, #12) — served by
+	 * the {@code order_totals} view: customer name, item count and total
+	 * amount come straight from the view in one query per page (and one count
+	 * query), newest first. The {@code sort} part of the pageable is reserved
+	 * for endpoints that can honor it; this view-based listing is fixed to
+	 * newest-first (+ id tiebreak) and uses only page/size.
 	 */
 	@Transactional(readOnly = true)
 	public PageResponseDto<OrderSummaryDto> searchOrders(OrderStatus status, Integer customerId,
@@ -90,9 +90,14 @@ public class OrderService {
 		if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
 			throw new IllegalArgumentException("dateFrom must not be after dateTo");
 		}
-		Page<Order> orders = orderRepository.findAll(orderSpecification(status, customerId, dateFrom, dateTo), pageable);
-		Map<Integer, OrderAggregate> aggregates = aggregateOrders(orders.getContent());
-		return PageResponseDto.of(orders.map(order -> toSummary(order, aggregates.get(order.getId()))));
+		String statusName = status == null ? null : status.name();
+		int page = Math.max(pageable.getPageNumber(), 0);
+		int size = Math.max(pageable.getPageSize(), 1);
+		List<OrderTotalsRow> rows = orderRepository.findOrderTotals(statusName, customerId, dateFrom, dateTo, size,
+				page * size);
+		long totalElements = orderRepository.countOrderTotals(statusName, customerId, dateFrom, dateTo);
+		List<OrderSummaryDto> summaries = rows.stream().map(OrderService::toSummary).toList();
+		return PageResponseDto.of(summaries, page, size, totalElements);
 	}
 
 	/**
@@ -371,46 +376,11 @@ public class OrderService {
 		}
 	}
 
-	private Specification<Order> orderSpecification(OrderStatus status, Integer customerId, LocalDateTime dateFrom,
-			LocalDateTime dateTo) {
-		return (root, query, cb) -> {
-			if (query.getResultType() != Long.class && query.getResultType() != long.class) {
-				root.fetch("customer", JoinType.LEFT);
-			}
-			List<Predicate> predicates = new ArrayList<>();
-			if (status != null) {
-				predicates.add(cb.equal(root.get("status"), status));
-			}
-			if (customerId != null) {
-				predicates.add(cb.equal(root.get("customer").get("id"), customerId));
-			}
-			if (dateFrom != null) {
-				predicates.add(cb.greaterThanOrEqualTo(root.get("orderDate"), dateFrom));
-			}
-			if (dateTo != null) {
-				predicates.add(cb.lessThanOrEqualTo(root.get("orderDate"), dateTo));
-			}
-			return cb.and(predicates.toArray(Predicate[]::new));
-		};
-	}
-
-	private Map<Integer, OrderAggregate> aggregateOrders(List<Order> orders) {
-		List<Integer> ids = orders.stream().map(Order::getId).toList();
-		if (ids.isEmpty()) {
-			return Map.of();
-		}
-		return orderItemRepository.aggregateForOrders(ids).stream()
-				.collect(Collectors.toMap(OrderAggregate::getOrderId, Function.identity()));
-	}
-
-	private OrderSummaryDto toSummary(Order order, OrderAggregate aggregate) {
-		Customer customer = order.getCustomer();
-		long itemCount = aggregate != null && aggregate.getItemCount() != null ? aggregate.getItemCount() : 0L;
-		BigDecimal totalAmount = aggregate != null && aggregate.getTotalAmount() != null
-				? aggregate.getTotalAmount() : BigDecimal.ZERO;
-		return new OrderSummaryDto(order.getId(), order.getOrderDate(),
-				order.getStatus() != null ? order.getStatus().name() : null, customer.getId(),
-				customer.getFirstName() + " " + customer.getLastName(), itemCount, totalAmount);
+	private static OrderSummaryDto toSummary(OrderTotalsRow row) {
+		return new OrderSummaryDto(row.getOrderId(), row.getOrderDate(), row.getStatus(), row.getCustomerId(),
+				row.getCustomerName(),
+				row.getItemCount() != null ? row.getItemCount() : 0L,
+				row.getTotalAmount() != null ? row.getTotalAmount() : BigDecimal.ZERO);
 	}
 
 	private OrderDetailDto toDetail(Order order) {

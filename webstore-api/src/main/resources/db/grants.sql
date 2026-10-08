@@ -52,6 +52,14 @@ GRANT SELECT, INSERT, UPDATE ON webstore.digitalproducts  TO 'webstore_app'@'loc
 --   GRANT SELECT ON webstore.order_totals TO ...;
 --   GRANT SELECT ON webstore.customer_summary TO ...;
 --   GRANT SELECT, INSERT ON webstore.productpricehistory TO ...;
---   GRANT SELECT ON webstore.orderstatuslog TO ...;
+-- §6 feature objects (created by db/views.sql, db/triggers.sql, db/events.sql):
+-- views serving API reads; history/log/summary tables are read by the API and
+-- WRITTEN ONLY by the triggers/event (DEFINER = admin) — the app needs no
+-- write grants on them. Least privilege stays intact.
+GRANT SELECT ON webstore.order_totals        TO 'webstore_app'@'localhost';
+GRANT SELECT ON webstore.customer_summary    TO 'webstore_app'@'localhost';
+GRANT SELECT ON webstore.productpricehistory TO 'webstore_app'@'localhost';
+GRANT SELECT ON webstore.orderstatuslog      TO 'webstore_app'@'localhost';
+GRANT SELECT ON webstore.dailysales          TO 'webstore_app'@'localhost';
 
 FLUSH PRIVILEGES;

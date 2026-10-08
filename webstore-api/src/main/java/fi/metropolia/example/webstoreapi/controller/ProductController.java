@@ -1,10 +1,12 @@
 package fi.metropolia.example.webstoreapi.controller;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,9 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 import fi.metropolia.example.webstoreapi.dto.CategoryProductsDto;
 import fi.metropolia.example.webstoreapi.dto.CategoryStatsDto;
 import fi.metropolia.example.webstoreapi.dto.PageResponseDto;
+import fi.metropolia.example.webstoreapi.dto.PriceHistoryEntryDto;
 import fi.metropolia.example.webstoreapi.dto.PriceUpdateRequest;
 import fi.metropolia.example.webstoreapi.dto.ProductDetailDto;
 import fi.metropolia.example.webstoreapi.dto.ProductDto;
+import fi.metropolia.example.webstoreapi.dto.ProductPriceAtDto;
 import fi.metropolia.example.webstoreapi.dto.ProductWriteDto;
 import fi.metropolia.example.webstoreapi.service.ProductService;
 
@@ -58,6 +62,27 @@ public class ProductController {
 	@GetMapping("/price/{min}")
 	public List<ProductDto> getProductsByMinPrice(@PathVariable("min") BigDecimal min) {
 		return productService.findByMinPrice(min);
+	}
+
+	/**
+	 * Temporal feature (plan §6): full price change log of one product, oldest
+	 * first (system-versioned {@code productpricehistory}).
+	 */
+	@GetMapping("/{id}/price-history")
+	public List<PriceHistoryEntryDto> getPriceHistory(@PathVariable("id") Integer id) {
+		return productService.priceHistory(id);
+	}
+
+	/**
+	 * Temporal feature (plan §6): "price at time T". Optional ISO date-time
+	 * {@code at}; omitted → current price. Times before the feature's
+	 * deployment fall back to the current price and are marked as such
+	 * ({@code source}).
+	 */
+	@GetMapping("/{id}/price")
+	public ProductPriceAtDto getPriceAt(@PathVariable("id") Integer id,
+			@RequestParam(name = "at", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime at) {
+		return productService.priceAtTime(id, at);
 	}
 
 	@GetMapping("/category/{id}")
