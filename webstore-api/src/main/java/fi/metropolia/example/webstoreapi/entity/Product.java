@@ -21,6 +21,7 @@ import jakarta.persistence.InheritanceType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 /**
  * Product, mapped to the webstore {@code products} table.
@@ -59,6 +60,15 @@ public class Product {
 
 	@Column(name = "stock_quantity", nullable = false)
 	private Integer stockQuantity;
+
+	/**
+	 * Optimistic locking version (plan §5): concurrent price/stock updates that
+	 * were read from a stale version fail instead of silently overwriting.
+	 * Column added by {@code db/optimistic_locking.sql}.
+	 */
+	@Version
+	@Column(name = "version", nullable = false)
+	private Long version;
 
 	@ManyToOne(fetch = FetchType.EAGER, optional = true)
 	@JoinColumn(name = "category_id")
@@ -104,6 +114,10 @@ public class Product {
 
 	public void setStockQuantity(Integer stockQuantity) {
 		this.stockQuantity = stockQuantity;
+	}
+
+	public Long getVersion() {
+		return version;
 	}
 
 	public ProductCategory getCategory() {

@@ -20,21 +20,22 @@ CREATE DATABASE IF NOT EXISTS webstore CHARACTER SET utf8mb4 COLLATE utf8mb4_uni
 GRANT SELECT ON webstore.orders          TO 'webstore_app'@'localhost';
 GRANT SELECT ON webstore.orderitems      TO 'webstore_app'@'localhost';
 GRANT SELECT ON webstore.products        TO 'webstore_app'@'localhost';
-GRANT SELECT ON webstore.productcategories TO 'webstore_app'@'localhost';
-GRANT SELECT ON webstore.suppliers       TO 'webstore_app'@'localhost';
-GRANT SELECT ON webstore.supplieraddresses TO 'webstore_app'@'localhost';
 GRANT SELECT ON webstore.customers       TO 'webstore_app'@'localhost';
-GRANT SELECT ON webstore.customeraddresses TO 'webstore_app'@'localhost';
 GRANT SELECT ON webstore.contacts        TO 'webstore_app'@'localhost';
 
 -- write access needed by the API today:
 --   products      : admin create/update (incl. stock decrement on checkout)
+--   productcategories : full CRUD cycle of the small category table (plan §4 #18)
+--   suppliers / supplieraddresses : admin CRUD incl. 1:M addresses (plan §2)
 --   orders        : checkout (insert) + status update + delete of cancelled orders
 --   orderitems    : checkout items, cart editing, cascade delete with order
 --   customeraddresses : customers manage their own addresses (incl. delete)
 --   customers     : future admin create/update (plan §2)
 --   contacts      : customer contact CRUD (plan §2)
 GRANT SELECT, INSERT, UPDATE ON webstore.products             TO 'webstore_app'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.productcategories TO 'webstore_app'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.suppliers    TO 'webstore_app'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.supplieraddresses TO 'webstore_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.orders       TO 'webstore_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.orderitems   TO 'webstore_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON webstore.customeraddresses TO 'webstore_app'@'localhost';
