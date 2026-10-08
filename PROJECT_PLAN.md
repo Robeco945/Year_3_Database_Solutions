@@ -189,12 +189,12 @@ documented in the README** as the instructions require.
 - **`CREATE USER 'webstore_app'@'localhost'`** with least-privilege
   `GRANT SELECT, INSERT, UPDATE` (+ `DELETE` on `orders`/`orderitems` only if
   actually needed) — the API connects with this user, never as root. Admin-level
-  operations (creating triggers/events) are executed by a separate DBA account,
-  documented in `docs/security.md`.
+  operations (creating triggers/events) are executed by a separate DBA account.
+  Full details in the README **Security** section.
 - Passwords are **not stored in the repo**; configuration uses environment
   variables.
 - Backup plan and schema-change plan (how a schema change is rolled forward and
-  back) documented in the README + `docs/security.md`.
+  back) documented in the README (Security / Backup & schema changes sections).
 
 ### SQL scripts & reproducibility
 
@@ -234,12 +234,15 @@ webstore-api/
 │   ├── application.yml
 │   └── db/             indexes.sql, views.sql, triggers.sql, events.sql, grants.sql
 ├── docs/
-│   ├── index_plan.md   (EXPLAIN before/after measurements)
-│   ├── security.md     (users & grants, backup plan, schema-change plan)
-│   └── temporal.md     (price history approach)
-├── README.md           (endpoint docs: purpose/request/response + DB features + setup)
+│   └── index_plan.md   (EXPLAIN before/after measurements)
+├── README.md           (endpoint docs: purpose/request/response + DB features,
+│                        security/backups/schema changes, limitations)
 └── pom.xml             (spring-boot-starter-web, spring-boot-starter-data-jpa,
                         mariadb-java-client, springdoc-openapi)
+
+(Security and temporal documentation intentionally live in the README — the
+course rubric requires one self-contained document — instead of separate
+docs/*.md files.)
 ```
 
 ---
@@ -301,40 +304,55 @@ webstore-api/
    `GET /products/{id}/price-history` and `GET /products/{id}/price?at=`
    (`FOR SYSTEM_TIME AS OF`, fallback for pre-deployment times). All verified
    end-to-end against the populated DB. All script-reproducible.*
-5. **Documentation** — OpenAPI spec (springdoc), README (all endpoints: purpose,
-   request, response; all DB features; limitations), `docs/` notes. Keep it current
-   as features land.
+5. **Documentation** — ✅ *done: this README is the single self-contained
+   document the course rubric asks for: intro + chosen perspective, current
+   status of all five work-order steps, every endpoint (purpose, request,
+   response), service-layer business rules, DB features incl. the ones not
+   visible through the API (views, triggers, temporal history, indexed hot
+   queries + `docs/index_plan.md`), Security / Backup & schema changes /
+   Limitations & assumptions sections, requirements + setup + run + Swagger.
+   Repo cleaned: 98 MB dump untracked (gitignored, kept on disk), sample
+   `demo/` template removed, step-4 orphans and unused imports removed.*
+   *(Bulk operation added to fulfill §6b/DoD: category-wide bulk @Modifying
+   price update — as native single-table UPDATE; see the verified JOINED
+   multi-table pitfall in ProductRepository javadoc.)*
 
 ---
 
 ## 9. Definition of done
 
-- [ ] All 9 tables mapped to JPA entities; association types covered (1:M, N:M, 1:1) + inheritance
-- [ ] Eager vs lazy loading choices justified in README
-- [ ] **CRUD exists for every key resource** (see §2 table; restrictions and
-      rationale documented in README)
-- [ ] Queries of varying difficulty implemented (single table, inner join,
+- [x] All 9 tables mapped to JPA entities; association types covered (1:M, N:M, 1:1) + inheritance *(step 2)*
+- [x] Eager vs lazy loading choices justified in README *(step 2 section in README + entity javadocs)*
+- [x] **CRUD exists for every key resource** (see §2 table; restrictions and
+      rationale documented in README) *(step 3, admin view completes C/U/D
+      where the customer view is read-only)*
+- [x] Queries of varying difficulty implemented (single table, inner join,
       left join/subquery, GROUP BY/HAVING, dynamic multi-criteria) — and endpoints
-      **combine data from different tables**
-- [ ] **Broad API**: comprehensive endpoints incl. pagination + multi-criteria search
+      **combine data from different tables** *(step 3; order listing/search
+      moved to the `order_totals` view in step 4 with identical filters)*
+- [x] **Broad API**: comprehensive endpoints incl. pagination + multi-criteria search *(step 3)*
 - [x] Identified hot queries backed by an indexing plan + before/after `EXPLAIN` measurements *(step 4, `webstore-api/docs/index_plan.md`)*
-- [ ] `POST /orders` demonstrates transactional stock handling with row locking;
-      cart editing (`PATCH /orders/{id}/items`) also transactional
-- [ ] Optimistic locking (`@Version`) implemented and evaluated
+- [x] `POST /orders` demonstrates transactional stock handling with row locking;
+      cart editing (`PATCH /orders/{id}/items`) also transactional *(step 3)*
+- [x] Optimistic locking (`@Version`) implemented and evaluated *(step 3; run books incl. 409 on stale version)*
 - [x] ≥1 view (**serving API responses**), ≥1 trigger (price + status logs),
       ≥1 scheduled event *(step 4; optional stored procedure not implemented)*
 - [x] Temporal solution: price history queryable, "price at time T" endpoint
       *(system-versioned `productpricehistory`; `FOR SYSTEM_TIME AS OF` +
       documented fallback; endpoints `GET /products/{id}/price-history`,
       `GET /products/{id}/price?at=`)*
-- [ ] App-level DB user with least-privilege grants; backup plan and schema-change
-      plan documented
-- [ ] ≥1 `AttributeConverter`, ≥1 entity listener, ≥1 bulk `@Modifying` JPQL query,
-      N+1 avoidance demonstrated (JOIN FETCH)
-- [ ] OpenAPI/Swagger served, and **README documents every endpoint (purpose,
+- [x] App-level DB user with least-privilege grants; backup plan and schema-change
+      plan documented *(README Security / Backup & schema changes sections)*
+- [x] ≥1 `AttributeConverter`, ≥1 entity listener, ≥1 bulk `@Modifying` query,
+      N+1 avoidance demonstrated (JOIN FETCH) *(converter/listener step 2;
+      bulk step 5 — native single-table UPDATE, the JOINED-hierarchy JPQL
+      temp-table pitfall verified live and documented; N+1 JOIN FETCH in
+      `OrderRepository.findWithItemsById`)*
+- [x] OpenAPI/Swagger served, and **README documents every endpoint (purpose,
       request, response) plus views, triggers, indexes, temporal features,
       security, backups** — everything implemented and working is visible from the
       documentation
+- [x] Repo contains only project material (course data dump kept out of VCS)
 
 ---
 

@@ -47,11 +47,12 @@ GRANT SELECT, INSERT, UPDATE ON webstore.contacts             TO 'webstore_app'@
 GRANT SELECT, INSERT, UPDATE ON webstore.physicalproducts TO 'webstore_app'@'localhost';
 GRANT SELECT, INSERT, UPDATE ON webstore.digitalproducts  TO 'webstore_app'@'localhost';
 
--- NOTE: the price/status-log tables and views created later (plan §6) must have
--- matching grants added here:
---   GRANT SELECT ON webstore.order_totals TO ...;
---   GRANT SELECT ON webstore.customer_summary TO ...;
---   GRANT SELECT, INSERT ON webstore.productpricehistory TO ...;
+-- Bulk @Modifying updates: implemented as a single-table NATIVE update on
+-- products (see ProductRepository javadoc). A JPQL bulk update on the JOINED
+-- Product hierarchy would go through Hibernate's multi-table strategy and need
+-- temporary-table privileges plus a same-named base table — verified live and
+-- rejected as a correctness hazard (rows accumulate in the stub table).
+
 -- §6 feature objects (created by db/views.sql, db/triggers.sql, db/events.sql):
 -- views serving API reads; history/log/summary tables are read by the API and
 -- WRITTEN ONLY by the triggers/event (DEFINER = admin) — the app needs no

@@ -5,6 +5,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,6 +38,8 @@ import fi.metropolia.example.webstoreapi.repository.SupplierRepository;
  */
 @Service
 public class ProductService {
+
+	private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
 	private final ProductRepository productRepository;
 	private final ProductCategoryRepository categoryRepository;
@@ -83,6 +87,28 @@ public class ProductService {
 			throw new IllegalArgumentException("minProducts must be >= 0");
 		}
 		return productRepository.findCategoryStats(minProducts);
+	}
+
+	/**
+	 * Bulk price change for every product of one category (plan §6b,
+	 * DoD): one @Modifying UPDATE, no per-row entity loading.
+	 * Factor must be positive (e.g. 1.1 = +10 %). Bulk statements bypass the
+	 * persistence context and entity listeners; the repository query bumps
+	 * {@code version} explicitly for optimistic-locking consistency and the
+	 * DB-level price-history trigger still captures the change (why the query
+	 * is native single-table: see ProductRepository javadoc).
+	 */
+	@Transactional
+	public int bulkUpdatePricesByCategory(Integer categoryId, BigDecimal factor) {
+		if (categoryRepository.findById(categoryId).isEmpty()) {
+			throw new ResourceNotFoundException("Category not found: id=" + categoryId);
+		}
+		if (factor == null || factor.signum() <= 0) {
+			throw new IllegalArgumentException("factor must be > 0 (e.g. 1.1 = +10 %)");
+		}
+		int updated = productRepository.bulkUpdatePricesByCategory(categoryId, factor);
+		log.info("Bulk price update: category {} factor {} -> {} products", categoryId, factor, updated);
+		return updated;
 	}
 
 	/**

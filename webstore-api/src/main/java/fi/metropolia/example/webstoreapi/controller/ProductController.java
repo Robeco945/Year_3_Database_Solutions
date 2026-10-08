@@ -113,4 +113,16 @@ public class ProductController {
 		return productService.updatePrice(id, request);
 	}
 
+	/**
+	 * Admin bulk price change for a whole category (plan §6b): one @Modifying
+	 * UPDATE (no per-row loading); returns the number of products updated.
+	 */
+	@PutMapping("/categories/{id}/price-bulk")
+	public ResponseEntity<String> bulkUpdatePrices(@PathVariable("id") Integer categoryId,
+			@RequestParam("factor") BigDecimal factor) {
+		int updated = productService.bulkUpdatePricesByCategory(categoryId, factor);
+		return ResponseEntity.ok("updated " + updated + " products of category " + categoryId
+				+ " by factor " + factor);
+	}
+
 }

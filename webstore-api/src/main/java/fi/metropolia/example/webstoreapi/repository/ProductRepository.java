@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -94,6 +95,31 @@ public interface ProductRepository extends JpaRepository<Product, Integer>, JpaS
 			ORDER BY COUNT(p) DESC
 			""")
 	List<CategoryStatsDto> findCategoryStats(@Param("minProducts") long minProducts);
+
+	/**
+	 * Bulk price change for a whole category (plan §6b): one @Modifying
+	 * UPDATE statement, no per-row entity loading.
+	 *
+	 * <p><b>Why native SQL, not JPQL:</b> a JPQL bulk update on {@code Product}
+	 * (the root of the JOINED inheritance hierarchy) is translated by Hibernate
+	 * into a MULTI-TABLE update that materializes matching ids in an internal
+	 * temporary table ({@code HT_products}). Verified live that this needs
+	 * CREATE TEMPORARY TABLES + a privilege-checked base table of the same
+	 * name, and that rows then accumulate in the permanent stub — a correctness
+	 * hazard. A single-table native UPDATE avoids the temp-table strategy
+	 * entirely; {@code version} is bumped explicitly so @Version-based
+	 * optimistic locking stays consistent, and the DB-level price-history
+	 * trigger still captures the change (the persistence context/listeners are
+	 * bypassed by any bulk statement).
+	 */
+	@Modifying
+	@Query(nativeQuery = true, value = """
+			UPDATE products
+			SET price = price * :factor,
+			    version = version + 1
+			WHERE category_id = :categoryId
+			""")
+	int bulkUpdatePricesByCategory(@Param("categoryId") Integer categoryId, @Param("factor") BigDecimal factor);
 
 	long countByCategoryId(Integer categoryId);
 
