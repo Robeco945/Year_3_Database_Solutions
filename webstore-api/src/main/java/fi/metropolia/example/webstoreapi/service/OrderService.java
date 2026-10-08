@@ -42,7 +42,6 @@ import fi.metropolia.example.webstoreapi.repository.CustomerRepository;
 import fi.metropolia.example.webstoreapi.repository.OrderItemRepository;
 import fi.metropolia.example.webstoreapi.repository.OrderRepository;
 import fi.metropolia.example.webstoreapi.repository.ProductRepository;
-import jakarta.persistence.criteria.JoinType;
 
 /**
  * Order aggregate business logic (plan §2–§5): listing/searching orders,

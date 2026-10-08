@@ -1,0 +1,11 @@
+# provided course data — kept locally, not version controlled (98 MB)
+schema_populated_dump.sql
+
+# companion folders expected locally (see README: Database setup)
+Project Data/
+
+# build & IDE artifacts
+target/
+.idea/
+*.iml
+.vscode/
