@@ -264,9 +264,25 @@ webstore-api/
    LAZY + JOIN FETCH for order detail); `OrderStatus` enum ↔ varchar via
    autoApply `AttributeConverter`; boot-validated with `ddl-auto: validate`
    against the populated DB.*
-3. **CRUD + query endpoints** — implement the §2 CRUD coverage and §4 endpoint
-   tables, starting with the order aggregate (checkout, cart editing, status
-   changes).
+3. **CRUD + query endpoints** — ✅ *done: all §2 CRUD coverage and §4 endpoint
+   tables implemented. Order aggregate first: `POST /orders` checkout with
+   `SELECT … FOR UPDATE` pessimistic stock locks and 409 on insufficient stock,
+   `PATCH /orders/{id}/items` transactional cart editing (add/change/remove,
+   stock re-sync), `PUT /orders/{id}/status` lifecycle (NEW→SHIPPED→DELIVERED,
+   NEW→CANCELLED returns stock), admin delete of only cancelled orders. Query
+   endpoints: catalogue with filters/pagination/sorting, category stats
+   (GROUP BY + HAVING), customer detail combining contacts/addresses/orders,
+   customers without orders (NOT EXISTS), top spenders, dynamic order search
+   (Specification), order detail with JOIN FETCH and per-item subtotals.
+   Admin CRUD for products (incl. PHYS/DIG subclasses), categories, suppliers +
+   addresses; customer addresses (referenced address delete → 409) and contacts
+   matched by email. Optimistic locking added early: `products.version` via
+   `db/optimistic_locking.sql`, stale price update → 409 (plan §5). Service
+   layer for all resources, DTOs, stable pagination envelope and
+   ProblemDetail error handling; `grants.sql` extended with the catalogue
+   write grants; README endpoint documentation and DBA setup updated; booted
+   against the populated DB and verified end-to-end
+   (checkout/cart/cancel/delete stock assertions, CRUD + 404/409 cases).*
 4. **Database features** — views, triggers (price + status log), scheduled event,
    temporal price history, app user & grants; SQL scripts under
    `src/main/resources/db/`; `EXPLAIN` before/after measurements for the index plan.
